@@ -79,6 +79,23 @@ print(m.summary())                      # coef, std err, t, P>|t|, R²
 *Read it as:* +1 unit of TV → +0.045 Sales, **holding Radio and Newspaper fixed**.
 Newspaper's coefficient is ≈ 0 and its p-value would be large → it does nothing.
 
+### Q&A — linear regression
+
+**Q. What does the TV coefficient 0.0454 actually mean?**
+Spending one more unit on TV is associated with 0.0454 more Sales, **holding Radio and Newspaper fixed**. It is an association, not a cause.
+
+**Q. Newspaper has a negative coefficient. Does newspaper advertising hurt sales?**
+No. It's ≈ 0 with a large p-value — that's sampling noise. Say "no evidence of an effect", never "it reduces sales".
+
+**Q. R² = 0.897 — is that good?**
+It means 89.7% of the variation in Sales is explained. But R² on the *training* set always looks good, so only quote it on test data, and always alongside RMSE.
+
+**Q. RSE or RMSE?**
+Same idea. RSE divides RSS by n−p−1 (unbiased estimate of σ), RMSE divides by n. Report RMSE; it's in the units of Y.
+
+**Q. When would you use statsmodels instead of sklearn?**
+When you need inference — standard errors, t-stats, p-values, F-test, confidence intervals. sklearn gives you predictions only.
+
 ---
 
 ## 2. Curved → **Polynomial regression**
@@ -111,6 +128,20 @@ print(gs.best_params_)
 # statsmodels version
 smf.ols("mpg ~ horsepower + I(horsepower**2)", data=df).fit()
 ```
+
+### Q&A — polynomial regression
+
+**Q. Is this a non-linear model?**
+Non-linear in *x*, linear in the *coefficients* — so it's still ordinary least squares with an extra column. That's why the same tools work.
+
+**Q. Degree 5 has a lower train RMSE than degree 2. Why not use it?**
+Its test RMSE is higher (2.97 vs 2.88). The extra flexibility fitted noise, not signal.
+
+**Q. How do you choose the degree?**
+Cross-validation. Never training error — that will always pick the highest degree.
+
+**Q. Why did degree 15 get worse on the *training* set too?**
+The powers of x become enormous and almost perfectly correlated, so the fit becomes numerically unstable. Flexibility isn't free.
 
 ---
 
@@ -166,6 +197,26 @@ print("lasso kept:", X.columns[lasso[-1].coef_ != 0].tolist())
 
 `alpha` in sklearn **is** λ. λ = 0 → plain OLS. λ → ∞ → every coefficient dies and you predict the mean.
 
+### Q&A — ridge and lasso
+
+**Q. Why must you standardise first?**
+The penalty is on the size of β. If one predictor is in dollars and another in thousands of dollars, the penalty hits them unequally — the answer would change if you changed units. (The intercept is never penalised.)
+
+**Q. What happens as λ → 0 and λ → ∞?**
+λ = 0 gives plain OLS. λ → ∞ shrinks every coefficient to 0, so you just predict the mean of y.
+
+**Q. Ridge or lasso?**
+Many predictors each contributing a little → ridge. Only a handful that matter, and you want the model to tell you which → lasso.
+
+**Q. Lasso kept `rating` and dropped `income`, but `income` was the true predictor. Is the model broken?**
+No — they're near-duplicates, and lasso keeps one of a correlated group more or less arbitrarily. Fine for prediction, unsafe for "which variable matters".
+
+**Q. Why did OLS give `limit` a coefficient of −2.55?**
+Collinearity. When predictors are near-copies, their coefficients can take huge offsetting values with very large standard errors. Shrinkage fixes it.
+
+**Q. Does ridge do variable selection?**
+No. Coefficients get arbitrarily small but never exactly 0. Only the L1 penalty has the corner that produces exact zeros.
+
 ---
 
 ## 4. Jumps in steps → **Regression tree**
@@ -207,6 +258,26 @@ gs = GridSearchCV(DecisionTreeRegressor(random_state=42),
 
 **The overfitting trap, with numbers** (advertising data): a fully-grown tree gets **train RMSE = 0.000** — one leaf per row, perfect memorisation — but **test RMSE = 2.52**, worse than the linear model's 1.79. Depth is the safety valve.
 
+### Q&A — regression trees
+
+**Q. Why greedy, one split at a time?**
+Searching every possible tree is computationally impossible. Recursive binary splitting takes the best split available *right now* and never looks back.
+
+**Q. What does a leaf predict?**
+The mean of the training y values that fell in it (for classification, the majority class).
+
+**Q. The full tree got train RMSE 0.000. Isn't that perfect?**
+It's memorisation — roughly one leaf per row. Its test RMSE was 2.52, worse than the linear model. This is the cleanest example of overfitting you'll see.
+
+**Q. How do you stop it?**
+`max_depth`, `min_samples_leaf`, or cost-complexity pruning (`ccp_alpha`) — grow a big tree, then prune back. Choose the setting by cross-validation.
+
+**Q. Do trees need feature scaling?**
+No. Splits only depend on the *order* of values, so any monotone rescaling gives the identical tree.
+
+**Q. Why do trees handle interactions automatically?**
+Each split happens inside the region created by earlier splits, so "Years < 4 **and** Hits > 118" is expressible without you writing an interaction term.
+
 ---
 
 ## 5. Just want accuracy → **Random forest / boosting**
@@ -233,6 +304,23 @@ pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
 | Tree, full | 2.52 |
 
 The lesson from your own unit: **the truth here really is linear, so the simple model wins.** Fancier ≠ better. Always benchmark against linear regression.
+
+### Q&A — bagging, forests, boosting
+
+**Q. Bagging vs random forest?**
+Both average trees grown on bootstrap samples. A forest *also* restricts each split to a random `m ≈ √p` features, so the trees stop looking alike. Decorrelated trees average to a lower variance.
+
+**Q. Bagging vs boosting in one line?**
+Bagging: many deep trees in parallel, cures **variance**. Boosting: many shallow trees in sequence fitted to the errors so far, cures **bias**.
+
+**Q. Why did plain linear regression beat the random forest here?**
+Because the data really was generated by a linear rule. Ensembles pay a variance cost for flexibility they didn't need. Always keep linear regression as your benchmark.
+
+**Q. Can boosting overfit?**
+Yes — too many rounds or too large a learning rate. Use a small `learning_rate` (0.01–0.1) with more trees, and stop by CV. Random forests are much harder to overfit by adding trees.
+
+**Q. Why are ensembles called black boxes?**
+Individual splits are readable; 500 averaged trees are not. You get `feature_importances_`, not a formula you can interpret.
 
 ---
 
@@ -270,6 +358,20 @@ r2  = 1 - rss/tss          # identical
 ```
 
 **Never judge on training error.** R² on the training set *always* rises when you add a predictor — even pure random noise. That's what Adjusted R², AIC, BIC and Cp exist to punish.
+
+### Q&A — metrics
+
+**Q. Can R² be negative?**
+On test data, yes — it means your model does worse than just predicting the mean. On training data with an intercept, no.
+
+**Q. Why can't I compare models by R² alone?**
+Training R² *never* falls when you add a predictor, even a random one. Use adjusted R², AIC/BIC/Cp, or — best — test/CV error.
+
+**Q. RMSE or MAE?**
+RMSE squares the errors, so it punishes a few big misses hard. MAE treats all errors equally and is more robust to outliers. RMSE matches what the model minimised.
+
+**Q. What should I actually report?**
+Test RMSE (so people see the size of a typical error in real units) plus test R² (so they see it against a baseline).
 
 ---
 
@@ -327,6 +429,26 @@ print("CV RMSE:", np.sqrt(-scores).mean(), "±", np.sqrt(-scores).std())
 
 **Order of operations:** split → cross-validate on train to tune → refit on the full training set → score once on test.
 
+### Q&A — cross-validation
+
+**Q. Which metric does k-fold use if I don't say?**
+The estimator's own `.score()` — R² for regressors, accuracy for classifiers. Both are often the wrong choice, so set `scoring=` explicitly every time.
+
+**Q. Why does sklearn return negative MSE?**
+Its convention is "bigger score = better". Error is better when smaller, so it's returned negated. Do `np.sqrt(-scores)`.
+
+**Q. Why 5 or 10 folds and not 2, or n?**
+With k = 2 each model trains on only half your data, so the error estimate is pessimistic (biased up). With k = n (LOOCV) the training sets are nearly identical, so the n errors are highly correlated and the average is noisy — plus it costs n fits. 5 and 10 sit in between.
+
+**Q. Can I report the CV score as my final performance?**
+Not if you used it to choose λ, K or depth — you already optimised against it, so it's optimistic. Keep a test set you touched exactly once.
+
+**Q. Why does `shuffle=True` matter?**
+If the file is sorted by class or by date, plain `KFold` will hand you a fold that's 100% one class. For classification use `StratifiedKFold`, which preserves the class ratio in each fold.
+
+**Q. Why must scaling go inside the pipeline?**
+`make_pipeline(StandardScaler(), Ridge())` refits the scaler on each fold's training portion. Scaling the whole dataset first lets the held-out fold's mean and SD leak into training, which inflates your score.
+
 ---
 
 ## Step 4: improve it
@@ -377,6 +499,23 @@ vif = pd.Series([variance_inflation_factor(X.values, i) for i in range(X.shape[1
 df.corr()     # quick eyeball first
 ```
 
+### Q&A — selection and collinearity
+
+**Q. Why not just try every possible subset?**
+p predictors give 2^p models — 12 predictors is 4,096, 30 predictors is over a billion. Forward stepwise looks at roughly p²/2 instead.
+
+**Q. Stepwise or lasso?**
+Stepwise makes a hard in/out decision at each step; lasso shrinks continuously and can zero things out as a side effect. Lasso is a single convex problem, so it's faster and more stable.
+
+**Q. Train RMSE kept falling while CV RMSE turned around. What's the takeaway?**
+Training error can never tell you when to stop adding predictors. Only held-out error can.
+
+**Q. VIF = 1 means what? VIF = 25?**
+1 means that predictor is uncorrelated with all the others. 25 means 96% of its variance is explained by the others — it's essentially a duplicate.
+
+**Q. Does collinearity ruin my predictions?**
+Usually not. It wrecks *interpretation*: coefficients become unstable, standard errors blow up, and signs flip. If you only care about predicting, ridge handles it quietly.
+
 ---
 
 # PART 2 — CLASSIFICATION
@@ -424,6 +563,23 @@ np.exp(clf[-1].coef_)                        # odds ratios
 
 Coefficients live on the **log-odds** scale. Exponentiate before you interpret. `exp(β) > 1` pushes toward class 1, `< 1` pushes away.
 
+### Q&A — logistic regression
+
+**Q. Why not run linear regression on a 0/1 response?**
+It predicts values below 0 and above 1, which can't be probabilities, and with 3+ classes the numeric coding implies an ordering that doesn't exist.
+
+**Q. `exp(β) = 2.71` — say it in English.**
+A one-unit (here one standard deviation) increase in that feature multiplies the **odds** of malignancy by 2.71. Odds, not probability.
+
+**Q. Is logistic regression a classifier?**
+Strictly it's a probability model. It becomes a classifier only once you pick a threshold — and 0.5 is a default, not a law.
+
+**Q. How are the coefficients estimated?**
+Maximum likelihood, solved numerically. There's no closed-form formula like OLS has, which is why you sometimes need `max_iter=5000`.
+
+**Q. What replaces the F-test and t-test here?**
+z-statistics for individual coefficients and a likelihood-ratio / deviance test for the model as a whole.
+
 ---
 
 ## 2. Wiggly boundary, no assumptions → **KNN**
@@ -461,6 +617,23 @@ gs = GridSearchCV(make_pipeline(StandardScaler(), KNeighborsClassifier()),
 
 **You must scale.** KNN measures distance — if radius is in millimetres and texture is in raw units, the bigger-numbered column decides everything.
 
+### Q&A — KNN
+
+**Q. What happens during training?**
+Nothing. It stores the data. All the work happens at prediction time, which makes KNN slow to predict on big datasets.
+
+**Q. What does K control?**
+Flexibility. K = 1 traces every point (high variance); K = n predicts the majority class everywhere (high bias). The CV table above is the U-curve again.
+
+**Q. Why is scaling mandatory?**
+The prediction is based on distance. An unscaled feature measured in thousands will dominate every distance and the other features effectively disappear.
+
+**Q. Should K be odd?**
+For two classes, yes — an even K can tie.
+
+**Q. Why does KNN break down with many features?**
+Curse of dimensionality: in high dimensions every point is far from every other, so your "nearest" neighbours aren't actually near and the vote becomes meaningless.
+
 ---
 
 ## 3. Thousands of features (text) → **Naive Bayes**
@@ -483,6 +656,20 @@ from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
 nb = GaussianNB().fit(X_train, y_train)   # continuous features
 # MultinomialNB — word counts | BernoulliNB — 0/1 features
 ```
+
+### Q&A — naive Bayes
+
+**Q. What exactly is "naive"?**
+The assumption that, within a class, all features are independent of one another. That's almost always false.
+
+**Q. So why does it work?**
+You only need the *right winner*, not accurate probabilities. The independence error usually distorts both classes' scores in the same direction, leaving the argmax intact. Its probability outputs, though, are poorly calibrated — don't quote them as real probabilities.
+
+**Q. When is it the right tool?**
+Huge p, small n, especially text — thousands of word-count features where fitting a logistic regression would be slow or unstable.
+
+**Q. Which variant do I pick?**
+`GaussianNB` for continuous features, `MultinomialNB` for counts, `BernoulliNB` for 0/1 indicators.
 
 ---
 
@@ -510,6 +697,20 @@ rf = RandomForestClassifier(n_estimators=500, random_state=42).fit(X_train, y_tr
 | Tree (depth 3) | 0.953 | 0.958 |
 
 Three models tie on accuracy at 0.959 but rank differently on AUC — **accuracy and AUC disagree**, and AUC is the better tiebreaker because it looks at every threshold.
+
+### Q&A — classification trees and forests
+
+**Q. Why split on Gini or entropy instead of accuracy?**
+Accuracy can't distinguish a 51/49 node from a 90/10 node, and very often *no* split improves it at all, so the tree stops growing too early. Gini and entropy reward purity, so they keep finding useful splits.
+
+**Q. Gini for a pure node? For a 50/50 node?**
+0 and 0.5 (two classes). Lower is purer.
+
+**Q. Do trees give probabilities?**
+Yes — the class proportions inside the leaf. They're coarse, which is why the tree's AUC (0.958) is the worst of the five models despite decent accuracy.
+
+**Q. Can I trust `feature_importances_`?**
+Treat it as a hint. It's biased toward continuous and high-cardinality features. `permutation_importance` is the more honest version.
 
 ---
 
@@ -557,6 +758,26 @@ auc = roc_auc_score(y_test, proba)           # PROBABILITIES, never hard 0/1
 RocCurveDisplay.from_predictions(y_test, proba)
 ```
 
+### Q&A — evaluating a classifier
+
+**Q. Model A has accuracy 0.96, model B 0.95. Pick A?**
+Not necessarily. Check the class balance, look at *which* errors each makes, and compare AUC. In the table above three models tied at 0.959 accuracy but ranked differently on AUC.
+
+**Q. What does AUC actually mean?**
+The probability that a randomly chosen positive case gets a higher predicted score than a randomly chosen negative one. 0.5 = guessing.
+
+**Q. Can AUC be high while accuracy is poor?**
+Yes — the model ranks cases well but your threshold is in the wrong place. That's a threshold problem, not a model problem.
+
+**Q. How do I choose the threshold?**
+By the relative cost of a false negative versus a false positive. For cancer screening, a missed tumour costs far more than an unnecessary biopsy, so you push the threshold down.
+
+**Q. `roc_auc_score(y_test, pred)` — what's wrong with that?**
+It's being given hard 0/1 predictions. ROC needs the *probabilities* (`predict_proba(...)[:, 1]`), otherwise there's only one threshold to plot and the AUC is meaningless.
+
+**Q. My data is 99% one class. What do I report?**
+Not accuracy. Use AUC, precision/recall, or an F1 score, and consider class weights or resampling.
+
 ---
 
 # PART 3 — The one idea underneath all of it
@@ -587,3 +808,22 @@ You've now seen the U four separate times in this page:
 | Boosting rounds | slowly more flexible |
 
 And **cross-validation is how you find the bottom of the U** without ever touching the test set.
+
+---
+
+### Q&A — bias and variance
+
+**Q. Which part of the test error can you never remove?**
+Var(ε), the irreducible error. Even the true f makes mistakes.
+
+**Q. Train error 0.01, test error 4.2 — diagnosis and fix?**
+Overfitting, high variance. Reduce flexibility (shallower tree, bigger K, bigger λ), or get more data.
+
+**Q. Train error 3.9, test error 4.1 — both bad. Diagnosis and fix?**
+Underfitting, high bias. More flexibility: add features, add polynomial terms, lower λ, deeper trees.
+
+**Q. Does collecting more data fix bias or variance?**
+Variance. A straight line fitted to curved data stays wrong no matter how many points you give it.
+
+**Q. Why can't you just compute the bias and variance of your model?**
+The decomposition needs the true f, which you never have. That's exactly why cross-validation exists — it estimates the *sum* directly.
